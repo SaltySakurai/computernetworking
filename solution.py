@@ -1,51 +1,172 @@
- #import socket module
 from socket import *
-import sys # In order to terminate the program
+import os
+import sys
+import struct
+import time
+import select
+import binascii
 
-def webServer(port=13331):
-   serverSocket = socket(AF_INET, SOCK_STREAM)
+ICMP_ECHO_REQUEST = 8
+MAX_HOPS = 30
+TIMEOUT = 2.0
+TRIES = 1
+# The packet that we shall send to each router along the path is the ICMP echo
+# request packet, which is exactly what we had used in the ICMP ping exercise.
+# We shall use the same packet that we built in the Ping exercise
 
-   #Prepare a sever socket
-   #Fill in start
-   serverSocket.bind(('',13331))
-   serverSocket.listen(1)
+def checksum(string):
+# In this function we make the checksum of our packet
+    csum = 0
+    countTo = (len(string) // 2) * 2
+    count = 0
 
-   #Fill in end
+    while count < countTo:
+        thisVal = (string[count + 1]) * 256 + (string[count])
+        csum += thisVal
+        csum &= 0xffffffff
+        count += 2
 
-   while True:
-       #Establish the connection
-       print('Ready to serve...')
-       connectionSocket, addr = serverSocket.accept()    
-       try:
-           message = connectionSocket.recv(1024)
-           filename = message.split()[1]
-           f = open(filename[1:])
-           outputdata = f.read()
+    if countTo < len(string):
+        csum += (string[len(string) - 1])
+        csum &= 0xffffffff
 
-           #Send one HTTP header line into socket
-           #Fill in start
-           connectionSocket.send(b"HTTP/1.1 200 OK\r\n")
+    csum = (csum >> 16) + (csum & 0xffff)
+    csum = csum + (csum >> 16)
+    answer = ~csum
+    answer = answer & 0xffff
+    answer = answer >> 8 | (answer << 8 & 0xff00)
+    return answer
 
-           #Fill in end
+def build_packet():
+    #Fill in start
+    # In the sendOnePing() method of the ICMP Ping exercise ,firstly the header of our
+    # packet to be sent was made, secondly the checksum was appended to the header and
+    # then finally the complete packet was sent to the destination.
 
-           #Send the content of the requested file to the client
-           for i in range(0, len(outputdata)):
-               connectionSocket.send(outputdata[i].encode())
-           connectionSocket.send("\r\n".encode())
-           connectionSocket.close()
-       except IOError:
-           #Send response message for file not found (404)
-           #Fill in start
-           connectionSocket.send(b"404 Not Found")
-           #Fill in end
+    # Make the header in a similar way to the ping exercise.
+    # Append checksum to the header.
 
-           #Close client socket
-           #Fill in start
-           connectionSocket.close()
-           #Fill in end
+    # Don’t send the packet yet , just return the final packet in this function.
+    #Fill in end
 
-   serverSocket.close()
-   sys.exit()  # Terminate the program after sending the corresponding data
+    # So the function ending should look like this
 
-if __name__ == "__main__":
-   webServer(13331)
+        # Header is type (8), code (8), checksum (16), id (16), sequence (16)
+
+    myChecksum = 0
+    # Make a dummy header with a 0 checksum.
+    # struct -- Interpret strings as packed binary data
+    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, myChecksum, ID, 1)
+
+    data = struct.pack("d", time.time())
+
+    # Calculate the checksum on the data and the dummy header.
+    myChecksum = checksum(header + data)
+
+    # Get the right checksum, and put in the header
+    if sys.platform == 'darwin':
+        myChecksum = socket.htons(myChecksum) & 0xffff  # Convert 16-bit integers from host to network byte order.
+    else:
+        myChecksum = socket.htons(myChecksum)
+
+    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, myChecksum, ID, 1)
+
+    packet = header + data
+    return packet
+
+def get_route(hostname):
+    timeLeft = TIMEOUT
+    tracelist1 = [] #This is your list to use when iterating through each trace 
+    tracelist2 = [] #This is your list to contain all traces
+
+    for ttl in range(1,MAX_HOPS):
+        for tries in range(TRIES):
+            destAddr = gethostbyname(hostname)
+
+            #Fill in start
+            # Make a raw socket named mySocket
+            #icmp = socket.getprotobyname("icmp")
+            mySocket = socket(AF_INET, SOCK_RAW)
+
+            #Fill in end
+
+            mySocket.setsockopt(IPPROTO_IP, IP_TTL, struct.pack('I', ttl))
+            mySocket.settimeout(TIMEOUT)
+            try:
+                d = build_packet()
+                mySocket.sendto(d, (hostname, 0))
+                t= time.time()
+                startedSelect = time.time()
+                whatReady = select.select([mySocket], [], [], timeLeft)
+                howLongInSelect = (time.time() - startedSelect)
+                if whatReady[0] == []: # Timeout
+                    tracelist1.append("* * * Request timed out.")
+                    #Fill in start
+                    #You should add the list above to your all traces list
+                    tracelist2.append(tracelist1)
+                    #Fill in end
+                recvPacket, addr = mySocket.recvfrom(1024)
+                timeReceived = time.time()
+                timeLeft = timeLeft - howLongInSelect
+                if timeLeft <= 0:
+                    tracelist1.append("* * * Request timed out.")
+                    #Fill in start
+                    #You should add the list above to your all traces list
+                    tracelist2.append(tracelist1)
+                    #Fill in end
+            except timeout:
+                continue
+
+            else:
+                #Fill in start
+                #Fetch the icmp type from the IP packet
+                icmph = recPacket[20:28]
+                type, code, checksum, packetID, sq = struct.unpack("bbHHh", icmph)
+                #Fill in end
+                try: #try to fetch the hostname
+                    #Fill in start
+                    dest = socket.gethostbyname(hostname)
+                    #Fill in end
+                except herror:   #if the host does not provide a hostname
+                    #Fill in start
+                    return "hostname not returnable"
+                    #Fill in end
+
+                if types == 11:
+                    bytes = struct.calcsize("d")
+                    timeSent = struct.unpack("d", recvPacket[28:28 + bytes])[0]
+                    #Fill in start
+                    #You should add your responses to your lists here
+                    tracelis1.append(bytes)
+                    tracelist2.append(tracelist1)
+                    #Fill in end
+                elif types == 3:
+                    bytes = struct.calcsize("d")
+                    timeSent = struct.unpack("d", recvPacket[28:28 + bytes])[0]
+                    #Fill in start
+                    #You should add your responses to your lists here
+                    tracelis1.append(bytes)
+                    tracelist2.append(tracelist1) 
+                    #Fill in end
+                elif types == 0:
+                    bytes = struct.calcsize("d")
+                    timeSent = struct.unpack("d", recvPacket[28:28 + bytes])[0]
+                    #Fill in start
+                    #You should add your responses to your lists here and return your list if your destination IP is met
+                    tracelis1.append(bytes)
+                    tracelist2.append(tracelist1)
+                    if packetID == IPPROTO_IP:
+                        return tracelist2
+                    #Fill in end
+                else:
+                    #Fill in start
+                    #If there is an exception/error to your if statements, you should append that to your list here
+                    tracelis1.append("hostname not returnable")
+                    tracelist2.append(tracelist1)
+                    #Fill in end
+                break
+            finally:
+                mySocket.close()
+
+
+
